@@ -14,8 +14,20 @@ from app.core.config import get_settings
 from app.core.database import Base, engine
 
 
+def _migrate() -> None:
+    """轻量幂等迁移：给老库补字段。生产应换 Alembic。"""
+    from sqlalchemy import inspect, text
+    insp = inspect(engine)
+    if "events" in insp.get_table_names():
+        cols = {c["name"] for c in insp.get_columns("events")}
+        if "all_day" not in cols:
+            with engine.begin() as conn:
+                conn.execute(text("ALTER TABLE events ADD COLUMN all_day BOOLEAN NOT NULL DEFAULT 0"))
+
+
 # 创建数据库表
 Base.metadata.create_all(bind=engine)
+_migrate()
 
 
 def create_app() -> FastAPI:

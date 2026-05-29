@@ -7,7 +7,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, relationship
 
 from app.core.database import Base
@@ -40,6 +40,7 @@ class Event(Base):
     description: Mapped[Optional[str]] = Column(Text, nullable=True)
     start_time: Mapped[datetime] = Column(DateTime, nullable=False)
     end_time: Mapped[datetime] = Column(DateTime, nullable=False)
+    all_day: Mapped[bool] = Column(Boolean, nullable=False, default=False)
     color: Mapped[str] = Column(String(20), default="#2563eb")
     color_id: Mapped[str] = Column(String(20), default="blue")
     created_at: Mapped[datetime] = Column(DateTime, default=datetime.utcnow)

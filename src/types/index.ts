@@ -4,6 +4,7 @@ export interface Event {
   description: string;
   startTime: Date;
   endTime: Date;
+  allDay: boolean;
   color: string;
   colorId: string;
   createdAt: Date;

@@ -55,6 +55,7 @@ class EventBase(BaseModel):
     description: Optional[str] = None
     start_time: datetime
     end_time: datetime
+    all_day: bool = False
     color: Optional[str] = "#2563eb"
     color_id: Optional[str] = "blue"
 
@@ -72,6 +73,7 @@ class EventUpdate(BaseModel):
     description: Optional[str] = None
     start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None
+    all_day: Optional[bool] = None
     color: Optional[str] = None
     color_id: Optional[str] = None
 

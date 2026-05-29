@@ -108,6 +108,7 @@ export const createEventFromCommand = (text: string): Event | null => {
     description: parsed.description,
     startTime: parsed.startTime,
     endTime: parsed.endTime,
+    allDay: false,
     color: '#2563eb',
     colorId: 'blue',
     createdAt: new Date(),
