@@ -37,6 +37,14 @@ class Settings(BaseSettings):
     llm_model: str = "deepseek-chat"
     llm_timeout: float = 30.0
 
+    # ---- 视觉 LLM（用于课程表/日程截图直读）----
+    # 默认走智谱 GLM-4V，OpenAI 兼容协议
+    vision_provider: str = "glm"
+    vision_api_key: str = ""
+    vision_base_url: str = "https://open.bigmodel.cn/api/paas/v4"
+    vision_model: str = "glm-4v-plus"
+    vision_timeout: float = 90.0
+
     @field_validator("cors_origins", mode="before")
     @classmethod
     def _split_cors_origins(cls, value: object) -> object:

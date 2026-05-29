@@ -5,6 +5,7 @@
 """
 from __future__ import annotations
 
+import base64
 import json
 import logging
 import re
@@ -13,7 +14,7 @@ import urllib.request
 from datetime import datetime, timedelta
 from typing import List, Optional
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
 from pydantic import BaseModel, Field
 
 from app.core.config import get_settings
@@ -318,4 +319,109 @@ def parse(req: ParseRequest) -> ParseResponse:
     if req.mode == "schedule":
         events = _assign_distinct_colors(events)
         events = _expand_recurrence(events, req.weeks_to_expand)
+    return ParseResponse(events=events, raw=raw)
+
+
+_ALLOWED_IMAGE_MIME = {"image/png", "image/jpeg", "image/jpg", "image/webp", "image/gif"}
+_MAX_IMAGE_BYTES = 8 * 1024 * 1024  # 8 MB
+
+
+def _call_vision_llm(image_bytes: bytes, mime: str, now_iso: str, tz: str, weeks: int) -> str:
+    """把图片直接喂给视觉大模型（GLM-4V 等 OpenAI 兼容协议），返回 raw JSON 字符串。"""
+    settings = get_settings()
+    if not settings.vision_api_key:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="VISION_API_KEY not configured",
+        )
+
+    data_url = f"data:{mime};base64,{base64.b64encode(image_bytes).decode('ascii')}"
+    user_text = (
+        f"NOW = {now_iso}\nTIMEZONE = {tz}\nWEEKS_TO_EXPAND = {weeks}\n\n"
+        "这是一张课程表 / 日程截图，请按系统提示输出 JSON。"
+    )
+
+    payload = {
+        "model": settings.vision_model,
+        "messages": [
+            {"role": "system", "content": SCHEDULE_PROMPT},
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": user_text},
+                    {"type": "image_url", "image_url": {"url": data_url}},
+                ],
+            },
+        ],
+        "temperature": 0.1,
+    }
+
+    url = settings.vision_base_url.rstrip("/") + "/chat/completions"
+    req = urllib.request.Request(
+        url,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {settings.vision_api_key}",
+        },
+        method="POST",
+    )
+
+    try:
+        with urllib.request.urlopen(req, timeout=settings.vision_timeout) as resp:
+            body = resp.read().decode("utf-8")
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")[:500]
+        logger.warning("Vision LLM HTTP %s: %s", exc.code, detail)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Vision LLM upstream error {exc.code}",
+        ) from exc
+    except urllib.error.URLError as exc:
+        logger.warning("Vision LLM network error: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+            detail="Vision LLM unreachable",
+        ) from exc
+
+    try:
+        data = json.loads(body)
+        return data["choices"][0]["message"]["content"]
+    except (KeyError, IndexError, json.JSONDecodeError) as exc:
+        logger.warning("Unexpected vision LLM response shape: %s", body[:300])
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Vision LLM returned malformed response",
+        ) from exc
+
+
+@router.post("/image", response_model=ParseResponse, summary="把课程表/日程截图直接交给视觉大模型解析")
+async def parse_image(
+    file: UploadFile = File(..., description="课程表 / 日程截图"),
+    now: Optional[datetime] = Form(default=None),
+    timezone: Optional[str] = Form(default=None),
+    weeks_to_expand: int = Form(default=16, ge=1, le=30),
+) -> ParseResponse:
+    mime = (file.content_type or "").lower()
+    if mime not in _ALLOWED_IMAGE_MIME:
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail=f"Unsupported image type: {mime or 'unknown'}",
+        )
+
+    image_bytes = await file.read()
+    if not image_bytes:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="empty image")
+    if len(image_bytes) > _MAX_IMAGE_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"image exceeds {_MAX_IMAGE_BYTES // (1024 * 1024)} MB",
+        )
+
+    now_iso = (now or datetime.now()).isoformat(timespec="seconds")
+    tz = timezone or "Asia/Shanghai"
+    raw = _call_vision_llm(image_bytes, mime, now_iso, tz, weeks_to_expand)
+    events = _normalize_events(raw)
+    events = _assign_distinct_colors(events)
+    events = _expand_recurrence(events, weeks_to_expand)
     return ParseResponse(events=events, raw=raw)
