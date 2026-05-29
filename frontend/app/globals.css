@@ -1,0 +1,25 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background-color: theme("colors.surface.light");
+  color: theme("colors.ink.DEFAULT");
+  font-family: theme("fontFamily.sans");
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 后续深色模式由 ThemeSwitcher 在 <html> 上切换 .dark 类，这里给出 token 占位。 */
+.dark body {
+  background-color: theme("colors.surface.dark");
+  color: theme("colors.ink.inverse");
+}
