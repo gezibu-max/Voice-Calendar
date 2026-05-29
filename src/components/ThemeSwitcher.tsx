@@ -7,7 +7,7 @@ export const ThemeSwitcher = () => {
   return (
     <button
       onClick={() => setTheme(isDark ? 'light' : 'dark')}
-      className="w-7 h-7 grid place-items-center rounded-md text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-900 hover:text-neutral-800 dark:hover:text-neutral-200 transition-colors"
+      className="glass-pill w-8 h-8 grid place-items-center rounded-pill text-neutral-600 dark:text-neutral-200 hover:text-neutral-900 dark:hover:text-white"
       title={isDark ? '切换到浅色' : '切换到深色'}
     >
       {isDark ? (

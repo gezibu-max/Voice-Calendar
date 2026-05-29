@@ -1,26 +1,26 @@
 import { useCalendarStore } from '@/store';
 import type { CalendarView } from '@/types';
 
-const views: { id: CalendarView; label: string; shortcut: string }[] = [
-  { id: 'day', label: '日', shortcut: 'D' },
-  { id: 'week', label: '周', shortcut: 'W' },
-  { id: 'month', label: '月', shortcut: 'M' },
-  { id: 'year', label: '年', shortcut: 'Y' },
+const views: { id: CalendarView; label: string }[] = [
+  { id: 'day', label: '日' },
+  { id: 'week', label: '周' },
+  { id: 'month', label: '月' },
+  { id: 'year', label: '年' },
 ];
 
 export const ViewSwitcher = () => {
   const { view, setView } = useCalendarStore();
 
   return (
-    <div className="inline-flex p-0.5 rounded-md bg-neutral-100 dark:bg-neutral-900 border border-neutral-200/70 dark:border-neutral-800">
+    <div className="glass-pill inline-flex p-0.5 rounded-pill h-8">
       {views.map(({ id, label }) => (
         <button
           key={id}
           onClick={() => setView(id)}
-          className={`px-2.5 h-7 rounded text-xs font-medium transition-all ${
+          className={`px-3 h-7 rounded-pill text-xs font-medium transition-all ${
             view === id
-              ? 'bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100 shadow-soft'
-              : 'text-neutral-500 dark:text-neutral-400 hover:text-neutral-800 dark:hover:text-neutral-200'
+              ? 'bg-white dark:bg-white/16 text-neutral-900 dark:text-white shadow-specular dark:shadow-specular-dark'
+              : 'text-neutral-600 dark:text-neutral-300 hover:text-neutral-900 dark:hover:text-white'
           }`}
         >
           {label}

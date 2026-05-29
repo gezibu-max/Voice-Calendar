@@ -9,7 +9,7 @@ import { VoiceModal } from '@/components/VoiceModal';
 import { useEvents } from '@/hooks/useEvents';
 import { useSpeechSynthesis } from '@/hooks/useSpeechSynthesis';
 import { useSpeechRecognition } from '@/hooks/useSpeechRecognition';
-import { parseEventsFromText, type ParsedDraft, type ParseStatus } from '@/utils/llmParse';
+import { parseEventsFromText, parseEventsFromImage, type ParsedDraft, type ParseStatus } from '@/utils/llmParse';
 import type { Event } from '@/types';
 
 function App() {
@@ -107,6 +107,25 @@ function App() {
     }
   }, [speak, speech, closeVoiceModal]);
 
+  const handleImageCommand = useCallback(async (file: File) => {
+    setParsing(true);
+    try {
+      const result = await parseEventsFromImage(file);
+      setParseResult({
+        status: result.status,
+        drafts: result.drafts,
+        text: result.text,
+        message: result.message,
+      });
+      closeVoiceModal();
+      if (result.status === 'ok' && result.drafts.length === 0) {
+        speak('没有识别到事件');
+      }
+    } finally {
+      setParsing(false);
+    }
+  }, [speak, closeVoiceModal]);
+
   const handleRetryParse = useCallback(async (text: string) => {
     setParsing(true);
     try {
@@ -129,6 +148,7 @@ function App() {
         description: d.description,
         startTime: d.startTime,
         endTime: d.endTime,
+        allDay: false,
         color: d.color,
         colorId: d.colorId,
       });
@@ -158,7 +178,7 @@ function App() {
 
   return (
     <div className={`h-screen flex flex-col ${theme === 'dark' ? 'dark' : ''}`}>
-      <div className="flex-1 flex flex-col min-h-0 bg-white dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100">
+      <div className="flex-1 flex flex-col min-h-0 text-neutral-900 dark:text-neutral-100">
         <Header />
         <Calendar onEventClick={handleEventClick} />
       </div>
@@ -192,6 +212,7 @@ function App() {
           onStart={speech.startListening}
           onStop={speech.stopListening}
           onSubmit={handleVoiceCommand}
+          onSubmitImage={handleImageCommand}
           onClose={() => {
             speech.stopListening();
             speech.resetTranscript();

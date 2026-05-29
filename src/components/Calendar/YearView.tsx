@@ -13,7 +13,7 @@ export const YearView = ({ onMonthClick }: YearViewProps) => {
 
   return (
     <div className="flex-1 overflow-y-auto px-6 py-6">
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-x-8 gap-y-8 max-w-6xl mx-auto">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-5 max-w-6xl mx-auto">
         {months.map(month => {
           const isCurrentMonth = isSameMonth(month, currentDate);
           const daysInMonth = getDaysInMonth(month);
@@ -24,17 +24,15 @@ export const YearView = ({ onMonthClick }: YearViewProps) => {
             <button
               key={month.toDateString()}
               onClick={() => onMonthClick(month)}
-              className={`text-left p-3 rounded-md border transition-all ${
-                isCurrentMonth
-                  ? 'border-neutral-300 dark:border-neutral-700 bg-neutral-50/60 dark:bg-neutral-900/40'
-                  : 'border-transparent hover:border-neutral-200/80 dark:hover:border-neutral-800 hover:bg-neutral-50/60 dark:hover:bg-neutral-900/40'
+              className={`glass text-left p-4 rounded-panel transition-transform hover:-translate-y-0.5 ${
+                isCurrentMonth ? 'ring-2 ring-accent/50' : ''
               }`}
             >
-              <div className="flex items-baseline justify-between mb-2">
+              <div className="flex items-baseline justify-between mb-3">
                 <span className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
                   {month.toLocaleDateString('zh-CN', { month: 'long' })}
                 </span>
-                <span className="text-[11px] text-neutral-400">
+                <span className="text-[11px] text-neutral-500 dark:text-neutral-400 tabular-nums">
                   {month.getFullYear()}
                 </span>
               </div>
@@ -57,17 +55,20 @@ export const YearView = ({ onMonthClick }: YearViewProps) => {
                   return (
                     <div
                       key={i}
-                      className={`h-5 grid place-items-center text-[10px] tabular-nums rounded-sm ${
+                      className={`h-5 grid place-items-center text-[10px] tabular-nums rounded-md relative ${
                         isToday
-                          ? 'bg-accent text-white font-medium'
+                          ? 'text-white font-semibold'
                           : hasEvent
-                            ? 'text-neutral-900 dark:text-neutral-100 font-medium relative'
+                            ? 'text-neutral-900 dark:text-neutral-100 font-medium'
                             : 'text-neutral-500 dark:text-neutral-500'
                       }`}
+                      style={isToday
+                        ? { background: 'linear-gradient(135deg, #5AC8FA 0%, #0A84FF 60%, #5E5CE6 100%)' }
+                        : undefined}
                     >
                       {dayNum}
                       {hasEvent && !isToday && (
-                        <span className="absolute bottom-0 w-1 h-1 rounded-full bg-accent" />
+                        <span className="absolute bottom-0.5 w-1 h-1 rounded-full bg-accent" />
                       )}
                     </div>
                   );

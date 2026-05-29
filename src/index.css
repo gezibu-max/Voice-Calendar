@@ -19,13 +19,107 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   color: theme('colors.neutral.800');
-  background: theme('colors.white');
   letter-spacing: -0.005em;
+
+  /* 浅色 mesh：粉 / 蓝 / 青柠 三个柔和径向叠在 off-white 上 */
+  background-color: #f6f5f7;
+  background-image:
+    radial-gradient(at 8% 12%,  rgba(255, 168, 209, 0.55) 0px, transparent 45%),
+    radial-gradient(at 92% 8%,  rgba(140, 198, 255, 0.55) 0px, transparent 50%),
+    radial-gradient(at 70% 95%, rgba(189, 235, 187, 0.55) 0px, transparent 50%),
+    radial-gradient(at 18% 88%, rgba(255, 220, 168, 0.45) 0px, transparent 45%);
+  background-attachment: fixed;
 }
 
 .dark body {
   color: theme('colors.neutral.200');
-  background: theme('colors.neutral.950');
+  background-color: #0c0d12;
+  background-image:
+    radial-gradient(at 12% 14%, rgba(118, 86, 255, 0.40) 0px, transparent 45%),
+    radial-gradient(at 88% 10%, rgba(48, 130, 255, 0.40) 0px, transparent 50%),
+    radial-gradient(at 70% 92%, rgba(0, 200, 200, 0.35) 0px, transparent 50%),
+    radial-gradient(at 22% 86%, rgba(255, 110, 196, 0.32) 0px, transparent 45%);
+}
+
+@layer components {
+  /* 标准磨砂面板：弹窗、Header */
+  .glass {
+    background-color: theme('colors.glass.medium');
+    backdrop-filter: blur(28px) saturate(180%);
+    -webkit-backdrop-filter: blur(28px) saturate(180%);
+    border: 0.5px solid rgba(255, 255, 255, 0.6);
+    box-shadow: theme('boxShadow.glass');
+  }
+  .dark .glass {
+    background-color: theme('colors.glass.dark-medium');
+    border-color: rgba(255, 255, 255, 0.08);
+    box-shadow: theme('boxShadow.glass-dark');
+  }
+
+  /* 重磨砂：主弹窗、抬高浮层 */
+  .glass-strong {
+    background-color: theme('colors.glass.heavy');
+    backdrop-filter: blur(36px) saturate(200%);
+    -webkit-backdrop-filter: blur(36px) saturate(200%);
+    border: 0.5px solid rgba(255, 255, 255, 0.7);
+    box-shadow: theme('boxShadow.pop');
+  }
+  .dark .glass-strong {
+    background-color: theme('colors.glass.dark-heavy');
+    border-color: rgba(255, 255, 255, 0.1);
+    box-shadow: theme('boxShadow.pop-dark');
+  }
+
+  /* 轻磨砂：内嵌输入框、subtle 容器 */
+  .glass-subtle {
+    background-color: rgba(255, 255, 255, 0.5);
+    backdrop-filter: blur(14px) saturate(160%);
+    -webkit-backdrop-filter: blur(14px) saturate(160%);
+    border: 0.5px solid rgba(255, 255, 255, 0.55);
+  }
+  .dark .glass-subtle {
+    background-color: rgba(255, 255, 255, 0.04);
+    border-color: rgba(255, 255, 255, 0.06);
+  }
+
+  /* 玻璃胶囊按钮 */
+  .glass-pill {
+    background-color: rgba(255, 255, 255, 0.62);
+    backdrop-filter: blur(14px) saturate(160%);
+    -webkit-backdrop-filter: blur(14px) saturate(160%);
+    border: 0.5px solid rgba(255, 255, 255, 0.6);
+    box-shadow: theme('boxShadow.specular'), 0 1px 2px rgba(15,15,20,0.06);
+    transition: background-color 120ms ease, transform 120ms ease, box-shadow 120ms ease;
+  }
+  .glass-pill:hover {
+    background-color: rgba(255, 255, 255, 0.8);
+  }
+  .dark .glass-pill {
+    background-color: rgba(255, 255, 255, 0.06);
+    border-color: rgba(255, 255, 255, 0.08);
+    box-shadow: theme('boxShadow.specular-dark');
+  }
+  .dark .glass-pill:hover {
+    background-color: rgba(255, 255, 255, 0.12);
+  }
+
+  /* 渐变事件块（颜色由内联 style 提供 --c1/--c2） */
+  .event-glass {
+    background-image: linear-gradient(135deg, var(--c1), var(--c2));
+    box-shadow:
+      inset 0 1px 0 0 rgba(255,255,255,0.55),
+      inset 0 0 0 0.5px rgba(255,255,255,0.35),
+      0 6px 14px -6px rgba(15,15,20,0.25);
+    transition: transform 120ms ease, box-shadow 120ms ease, filter 120ms ease;
+  }
+  .event-glass:hover {
+    transform: translateY(-1px);
+    filter: saturate(1.08);
+    box-shadow:
+      inset 0 1px 0 0 rgba(255,255,255,0.65),
+      inset 0 0 0 0.5px rgba(255,255,255,0.4),
+      0 12px 22px -8px rgba(15,15,20,0.32);
+  }
 }
 
 ::-webkit-scrollbar {
@@ -68,5 +162,5 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
 
 @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
 @keyframes pop-in { from { opacity: 0; transform: translateY(4px) scale(0.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
-.animate-fade-in { animation: fade-in 120ms ease-out; }
-.animate-pop-in { animation: pop-in 160ms cubic-bezier(0.2, 0.9, 0.3, 1.2); }
+.animate-fade-in { animation: fade-in 140ms ease-out; }
+.animate-pop-in { animation: pop-in 200ms cubic-bezier(0.2, 0.9, 0.3, 1.2); }

@@ -28,10 +28,10 @@ export const Calendar = ({ onEventClick }: CalendarProps) => {
   };
   
   return (
-    <div className="flex-1 flex flex-col min-h-0 bg-white dark:bg-neutral-950">
+    <div className="flex-1 flex flex-col min-h-0">
       {view === 'day' && (
-        <DayView 
-          onEventClick={onEventClick} 
+        <DayView
+          onEventClick={onEventClick}
           onQuickCreate={handleQuickCreate}
         />
       )}
