@@ -1,68 +1,121 @@
-# Voice Calendar · 语音日历工具
+# 语音日历工具
 
-以语音交互为核心、参考 [Notion Calendar](https://www.notion.so/product/calendar) 设计风格的简约日程管理工具。用户通过语音指令完成事件的增删查改，配合多视图日历（日 / 周 / 月 / 年）、拖拽调整、快速创建、事件标签、深色模式等能力，提供"说一句话就能记日程"的体验。
+一个支持语音交互的现代日历应用，采用前后端分离架构。
 
 ## 技术栈
 
-| 模块 | 选型 | 说明 |
-| :--- | :--- | :--- |
-| 前端 | Next.js 14 (App Router) + TypeScript | React 框架，App Router 用于现代化路由 |
-| 样式 | Tailwind CSS | 原子化 CSS，匹配 Notion 的极简风格 |
-| 状态 | Zustand | 轻量状态管理 |
-| 后端 | FastAPI (Python 3.11+) | 异步 Web 框架 |
-| ORM | SQLAlchemy 2.x | 与 FastAPI 配套的成熟方案 |
-| 数据库 | SQLite | 零配置，赛事评委一键复现 |
-| 语音识别 | 百度智能云语音识别（Web SDK） | 中文识别准确度高，免费额度足够演示 |
-| 语音合成 | 浏览器 SpeechSynthesis API | 零依赖，作为提醒与回放通道 |
+### 前端
+- React 18 + TypeScript
+- Vite 构建工具
+- Tailwind CSS 3 样式框架
+- Zustand 状态管理
+- Web Speech API 语音识别与合成
 
-## 目录结构
+### 后端
+- FastAPI（Python Web 框架）
+- SQLAlchemy ORM
+- SQLite 数据库
+- Passlib 密码哈希
+
+## 项目结构
 
 ```
-Voice-Calendar/
-├── frontend/        # Next.js 前端工程（PR #3 引入）
-├── backend/         # FastAPI 后端工程（PR #2 引入）
-├── docs/            # 架构、接口、数据模型等设计文档
-├── .gitignore
-└── README.md
+语音日历工具/
+├── backend/              # 后端代码
+│   ├── app/
+│   │   ├── api/          # API 路由
+│   │   ├── core/         # 核心组件（配置、数据库）
+│   │   ├── crud.py       # 数据库操作
+│   │   ├── models.py     # 数据模型
+│   │   └── schemas.py    # Pydantic 模式
+│   ├── requirements.txt  # Python 依赖
+│   └── README.md
+├── frontend/             # 前端框架（可选的 Next.js 版本）
+├── src/                  # React 前端代码
+│   ├── components/       # UI 组件
+│   ├── hooks/            # 自定义 Hooks
+│   ├── store/            # 状态管理
+│   ├── utils/            # 工具函数
+│   └── types/            # TypeScript 类型
+└── docs/                 # 文档
 ```
 
 ## 快速开始
 
-> 当前仅初始化脚手架，前后端代码将在后续 PR 中分别引入。完整运行说明会随对应 PR 同步更新。
+### 后端启动
 
-### 后端（占位，待 `feat/backend-bootstrap` 合入后启用）
-
+1. 进入后端目录：
 ```bash
 cd backend
-python -m venv .venv
-source .venv/Scripts/activate   # Windows Git Bash
-pip install -r requirements.txt
-uvicorn app.main:app --reload
 ```
 
-### 前端（占位，待 `feat/frontend-bootstrap` 合入后启用）
-
+2. 创建虚拟环境（推荐）：
 ```bash
-cd frontend
+python -m venv .venv
+.venv\Scripts\activate  # Windows
+```
+
+3. 安装依赖：
+```bash
+pip install -r requirements.txt
+```
+
+4. 启动服务：
+```bash
+uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+```
+
+后端 API 将在 http://127.0.0.1:8000 启动，API 文档可访问 http://127.0.0.1:8000/docs
+
+### 前端启动
+
+1. 在项目根目录安装依赖：
+```bash
 npm install
+```
+
+2. 启动开发服务器：
+```bash
 npm run dev
 ```
 
-## 协作规范
+前端将在 http://localhost:5173 启动
 
-- **分支策略**：所有功能在 `feat/<topic>` 分支开发，禁止直推 `main`。
-- **PR 粒度**：单 PR 单功能，鼓励小颗粒；大功能拆成多个独立 PR 分步提交。
-- **PR 描述四段式**：标题、功能描述、实现思路、测试方式必须齐全。
-- **持续交付**：全周期持续提交 commit / PR，避免临尾突击。
-- **依赖声明**：第三方库须在对应模块（`backend/requirements.txt` / `frontend/package.json`）声明，并在该 PR 描述中说明用途与版本。
-- **可复现性**：`main` 分支任意时刻 clone 即可按 README 步骤运行。
+## 功能特性
 
-## 第三方依赖与原创说明
+- ✅ **事件管理**：创建、编辑、删除日历事件
+- ✅ **多视图**：日视图、周视图、月视图、年视图
+- ✅ **事件搜索**：按标题或描述搜索事件
+- ✅ **语音交互**：语音添加、查询、删除事件
+- ✅ **主题切换**：支持深色/浅色模式
+- ✅ **事件标签**：7 种颜色标签分类
+- ✅ **数据持久化**：SQLite 数据库 + LocalStorage 双重保障
 
-- 本项目所有业务代码均原创编写。
-- 引入的第三方库仅限于通用基础设施（Web 框架、ORM、UI 工具、语音 SDK），具体清单见 `backend/requirements.txt` 与 `frontend/package.json`，并在引入它们的 PR 描述中说明用途。
-- 不复用作者过往项目的私有代码片段；如未来某 PR 需要复用，将在该 PR 描述中显式标注来源。
+## API 接口
+
+### 事件管理
+- `GET /api/events` - 获取事件列表
+- `POST /api/events` - 创建事件
+- `GET /api/events/{id}` - 获取单个事件
+- `PUT /api/events/{id}` - 更新事件
+- `DELETE /api/events/{id}` - 删除事件
+- `GET /api/events/search?q=xxx` - 搜索事件
+
+## 开发说明
+
+### 后端-前端集成
+
+默认情况下，前端使用 LocalStorage 作为数据存储。要启用后端 API，请在 `src/utils/api.ts` 中修改：
+
+```typescript
+let useLocalStorage = false; // 设置为 false 启用后端
+```
+
+或者通过 API 动态切换：
+```typescript
+api.setBackendEnabled(true);
+```
 
 ## 许可证
 
-代码部分遵循仓库后续添加的开源许可证。当前阶段仅作赛事提交用途。
+MIT

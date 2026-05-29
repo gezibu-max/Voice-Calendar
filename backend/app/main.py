@@ -1,7 +1,6 @@
 """FastAPI 应用入口。
 
-负责创建 FastAPI 实例、注册 CORS 中间件、挂载各业务路由。本 PR 仅挂载健康检查路由，
-其余业务路由（事件、用户、提醒等）由后续 PR 增量挂入。
+负责创建 FastAPI 实例、注册 CORS 中间件、挂载各业务路由。
 """
 from __future__ import annotations
 
@@ -9,7 +8,13 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.health import router as health_router
+from app.api.events import router as events_router
 from app.core.config import get_settings
+from app.core.database import Base, engine
+
+
+# 创建数据库表
+Base.metadata.create_all(bind=engine)
 
 
 def create_app() -> FastAPI:
@@ -22,13 +27,14 @@ def create_app() -> FastAPI:
 
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=settings.cors_origins,
+        allow_origins=["*"],  # 开发环境允许所有源
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
     )
 
     app.include_router(health_router)
+    app.include_router(events_router)
 
     @app.get("/", tags=["meta"], summary="服务根接口")
     def root() -> dict:
