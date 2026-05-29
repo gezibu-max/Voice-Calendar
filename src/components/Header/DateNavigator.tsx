@@ -1,73 +1,42 @@
 import { useCalendarStore } from '@/store';
-import { addDays, addWeeks, addMonths, addYears, formatDate } from '@/utils/dateUtils';
+import { addDays, addWeeks, addMonths, addYears } from '@/utils/dateUtils';
 
 export const DateNavigator = () => {
   const { currentDate, view, setCurrentDate } = useCalendarStore();
-  
-  const handlePrev = () => {
+
+  const shift = (direction: 1 | -1) => {
     switch (view) {
-      case 'day':
-        setCurrentDate(addDays(currentDate, -1));
-        break;
-      case 'week':
-        setCurrentDate(addWeeks(currentDate, -1));
-        break;
-      case 'month':
-        setCurrentDate(addMonths(currentDate, -1));
-        break;
-      case 'year':
-        setCurrentDate(addYears(currentDate, -1));
-        break;
+      case 'day':   return setCurrentDate(addDays(currentDate, direction));
+      case 'week':  return setCurrentDate(addWeeks(currentDate, direction));
+      case 'month': return setCurrentDate(addMonths(currentDate, direction));
+      case 'year':  return setCurrentDate(addYears(currentDate, direction));
     }
   };
-  
-  const handleNext = () => {
-    switch (view) {
-      case 'day':
-        setCurrentDate(addDays(currentDate, 1));
-        break;
-      case 'week':
-        setCurrentDate(addWeeks(currentDate, 1));
-        break;
-      case 'month':
-        setCurrentDate(addMonths(currentDate, 1));
-        break;
-      case 'year':
-        setCurrentDate(addYears(currentDate, 1));
-        break;
-    }
-  };
-  
-  const handleToday = () => {
-    setCurrentDate(new Date());
-  };
-  
+
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex items-center gap-1">
       <button
-        onClick={handlePrev}
-        className="p-2 rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-        title="上一个"
-      >
-        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-        </svg>
-      </button>
-      
-      <button
-        onClick={handleToday}
-        className="px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+        onClick={() => setCurrentDate(new Date())}
+        className="h-7 px-2.5 text-xs font-medium text-neutral-700 dark:text-neutral-300 rounded-md border border-neutral-200/80 dark:border-neutral-800 hover:bg-neutral-50 dark:hover:bg-neutral-900 transition-colors"
       >
         今天
       </button>
-      
       <button
-        onClick={handleNext}
-        className="p-2 rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+        onClick={() => shift(-1)}
+        className="w-7 h-7 grid place-items-center rounded-md text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-900 hover:text-neutral-800 dark:hover:text-neutral-200 transition-colors"
+        title="上一个"
+      >
+        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M15 18l-6-6 6-6" />
+        </svg>
+      </button>
+      <button
+        onClick={() => shift(1)}
+        className="w-7 h-7 grid place-items-center rounded-md text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-900 hover:text-neutral-800 dark:hover:text-neutral-200 transition-colors"
         title="下一个"
       >
-        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M9 6l6 6-6 6" />
         </svg>
       </button>
     </div>

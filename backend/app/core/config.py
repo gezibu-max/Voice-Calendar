@@ -30,6 +30,13 @@ class Settings(BaseSettings):
 
     database_url: str = "sqlite:///./data/voice_calendar.db"
 
+    # ---- LLM (DeepSeek / OpenAI 兼容) ----
+    llm_provider: str = "deepseek"
+    llm_api_key: str = ""
+    llm_base_url: str = "https://api.deepseek.com/v1"
+    llm_model: str = "deepseek-chat"
+    llm_timeout: float = 30.0
+
     @field_validator("cors_origins", mode="before")
     @classmethod
     def _split_cors_origins(cls, value: object) -> object:

@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.health import router as health_router
 from app.api.events import router as events_router
+from app.api.parse import router as parse_router
 from app.core.config import get_settings
 from app.core.database import Base, engine
 
@@ -35,6 +36,7 @@ def create_app() -> FastAPI:
 
     app.include_router(health_router)
     app.include_router(events_router)
+    app.include_router(parse_router)
 
     @app.get("/", tags=["meta"], summary="服务根接口")
     def root() -> dict:

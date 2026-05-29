@@ -86,3 +86,12 @@ Thumbs.db
 
 # Vite
 dist/
+
+# 旧脚手架（保留在本地参考，不入库；含独立 .git 与 node_modules）
+Voice-Calendar/
+
+# 本地启动便利脚本（Windows 私用，不跨平台）
+_*.bat
+
+# Claude Code 本机权限白名单（按设计本就不入库）
+.claude/settings.local.json

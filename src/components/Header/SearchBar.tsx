@@ -3,26 +3,32 @@ import { useCalendarStore } from '@/store';
 
 export const SearchBar = () => {
   const { searchQuery, setSearchQuery } = useCalendarStore();
-  const [isFocused, setIsFocused] = useState(false);
-  
+  const [focused, setFocused] = useState(false);
+
   return (
-    <div className={`flex items-center gap-2 px-3 py-2 rounded-lg border transition-all ${
-      isFocused 
-        ? 'border-blue-500 bg-white dark:bg-gray-800' 
-        : 'border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700'
-    }`}>
-      <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+    <div
+      className={`flex items-center gap-1.5 h-7 pl-2 pr-2 rounded-md border transition-all ${
+        focused
+          ? 'border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 ring-2 ring-neutral-100 dark:ring-neutral-800'
+          : 'border-transparent bg-neutral-100/70 dark:bg-neutral-900 hover:bg-neutral-100 dark:hover:bg-neutral-900'
+      }`}
+    >
+      <svg className="w-3.5 h-3.5 text-neutral-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="11" cy="11" r="7" />
+        <path d="M21 21l-3.5-3.5" />
       </svg>
       <input
         type="text"
         value={searchQuery}
         onChange={(e) => setSearchQuery(e.target.value)}
-        onFocus={() => setIsFocused(true)}
-        onBlur={() => setIsFocused(false)}
-        className="bg-transparent border-none outline-none text-sm text-gray-700 dark:text-gray-200 placeholder-gray-400 w-40"
-        placeholder="搜索事件..."
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
+        placeholder="搜索"
+        className="bg-transparent border-none outline-none text-xs text-neutral-700 dark:text-neutral-200 placeholder-neutral-400 w-32 focus:w-44 transition-[width]"
       />
+      <kbd className="hidden md:inline-block text-[10px] font-mono text-neutral-400 border border-neutral-200 dark:border-neutral-800 rounded px-1 leading-4">
+        /
+      </kbd>
     </div>
   );
 };

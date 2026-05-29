@@ -1,4 +1,3 @@
-import { useCalendarStore } from '@/store';
 import { EventForm } from './EventForm';
 import { formatDate, formatTime } from '@/utils/dateUtils';
 import type { Event } from '@/types';
@@ -13,64 +12,63 @@ interface EventModalProps {
 
 export const EventModal = ({ event, onClose, onSave, onUpdate, onDelete }: EventModalProps) => {
   const handleSubmit = (data: Omit<Event, 'id' | 'createdAt' | 'updatedAt'>) => {
-    if (event) {
-      onUpdate(event.id, data);
-    } else {
-      onSave(data);
-    }
+    if (event) onUpdate(event.id, data);
+    else onSave(data);
     onClose();
   };
-  
+
   const handleDelete = () => {
     if (event) {
       onDelete(event.id);
       onClose();
     }
   };
-  
+
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
-        <div className="p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-semibold text-gray-800 dark:text-white">
-              {event ? '编辑事件' : '创建事件'}
-            </h2>
+    <div className="fixed inset-0 z-50 flex items-start justify-center pt-[12vh] px-4 bg-neutral-900/30 dark:bg-black/50 backdrop-blur-sm animate-fade-in" onClick={onClose}>
+      <div
+        className="bg-white dark:bg-neutral-950 rounded-xl shadow-pop border border-neutral-200/70 dark:border-neutral-800 w-full max-w-md max-h-[80vh] overflow-y-auto animate-pop-in"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="px-5 py-3 border-b border-neutral-200/70 dark:border-neutral-800 flex items-center justify-between">
+          <span className="text-[11px] uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
+            {event ? '编辑事件' : '新建事件'}
+          </span>
+          <div className="flex items-center gap-1">
+            {event && (
+              <button
+                onClick={handleDelete}
+                title="删除"
+                className="w-7 h-7 grid place-items-center rounded-md text-neutral-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-colors"
+              >
+                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                </svg>
+              </button>
+            )}
             <button
               onClick={onClose}
-              className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
+              className="w-7 h-7 grid place-items-center rounded-md text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-900 transition-colors"
             >
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M18 6L6 18M6 6l12 12" />
               </svg>
             </button>
           </div>
-          
+        </div>
+
+        <div className="p-5">
           {event && (
-            <div className="mb-4 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
-              <div className="text-sm text-gray-500 dark:text-gray-400">
-                <span className="font-medium">时间：</span>
-                {formatDate(event.startTime)} {formatTime(event.startTime)} - {formatTime(event.endTime)}
-              </div>
+            <div className="mb-4 text-xs text-neutral-500 dark:text-neutral-400 flex items-center gap-1.5">
+              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="9" />
+                <path d="M12 7v5l3 2" />
+              </svg>
+              {formatDate(event.startTime)} · {formatTime(event.startTime)} – {formatTime(event.endTime)}
             </div>
           )}
-          
-          <EventForm 
-            event={event} 
-            onSubmit={handleSubmit} 
-            onCancel={onClose} 
-          />
-          
-          {event && (
-            <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
-              <button
-                onClick={handleDelete}
-                className="w-full px-4 py-2 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
-              >
-                删除事件
-              </button>
-            </div>
-          )}
+
+          <EventForm event={event} onSubmit={handleSubmit} onCancel={onClose} />
         </div>
       </div>
     </div>

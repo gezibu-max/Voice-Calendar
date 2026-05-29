@@ -1,5 +1,5 @@
 import { useCalendarStore } from '@/store';
-import { getMonthStartDay, getDaysInMonth, formatDayOfWeek, isSameDay, isSameMonth } from '@/utils/dateUtils';
+import { getMonthStartDay, getDaysInMonth, isSameDay, isSameMonth } from '@/utils/dateUtils';
 import EventCard from '../Event/EventCard';
 import type { Event } from '@/types';
 
@@ -10,77 +10,67 @@ interface MonthViewProps {
 
 export const MonthView = ({ onEventClick, onDayClick }: MonthViewProps) => {
   const { events, currentDate } = useCalendarStore();
-  
+
   const startDay = getMonthStartDay(currentDate);
   const daysInMonth = getDaysInMonth(currentDate);
   const today = new Date();
-  
-  const days = Array.from({ length: 42 }, (_, i) => {
-    const dayNum = i - startDay + 1;
-    if (dayNum < 1 || dayNum > daysInMonth) {
-      return null;
-    }
-    return new Date(currentDate.getFullYear(), currentDate.getMonth(), dayNum);
+
+  const offset = (startDay + 6) % 7;
+  const totalCells = Math.ceil((offset + daysInMonth) / 7) * 7;
+  const firstCell = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1 - offset);
+
+  const cells: Date[] = Array.from({ length: totalCells }, (_, i) => {
+    const d = new Date(firstCell);
+    d.setDate(firstCell.getDate() + i);
+    return d;
   });
-  
-  const weekDays = ['日', '一', '二', '三', '四', '五', '六'];
-  
-  const getEventsForDay = (day: Date) => {
-    return events.filter(event => isSameDay(event.startTime, day));
-  };
-  
+
+  const weekdays = ['一', '二', '三', '四', '五', '六', '日'];
+
   return (
-    <div className="flex-1 overflow-y-auto p-4">
-      <div className="grid grid-cols-7 gap-1">
-        {weekDays.map(day => (
-          <div 
-            key={day} 
-            className="h-12 flex items-center justify-center text-sm font-medium text-gray-500 dark:text-gray-400"
-          >
-            {day}
+    <div className="flex-1 flex flex-col min-h-0">
+      <div className="grid grid-cols-7 border-b border-neutral-200/70 dark:border-neutral-800">
+        {weekdays.map(d => (
+          <div key={d} className="px-3 py-2 text-[11px] uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
+            {d}
           </div>
         ))}
-        
-        {days.map((day, index) => {
-          if (!day) {
-            return <div key={index} className="h-20" />;
-          }
-          
+      </div>
+
+      <div className="flex-1 grid grid-cols-7 grid-rows-[repeat(auto-fill,minmax(0,1fr))]" style={{ gridTemplateRows: `repeat(${totalCells / 7}, minmax(0, 1fr))` }}>
+        {cells.map((day, i) => {
           const isToday = isSameDay(day, today);
-          const isCurrentMonth = isSameMonth(day, currentDate);
-          const dayEvents = getEventsForDay(day);
-          
+          const inCurrentMonth = isSameMonth(day, currentDate);
+          const dayEvents = events.filter(e => isSameDay(e.startTime, day));
+          const isWeekend = day.getDay() === 0 || day.getDay() === 6;
+
           return (
-            <div 
-              key={day.toDateString()} 
-              className={`h-20 p-2 border border-gray-200 dark:border-gray-700 rounded-lg cursor-pointer transition-all hover:bg-gray-50 dark:hover:bg-gray-700 ${
-                isToday ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-400' : ''
-              } ${!isCurrentMonth ? 'bg-gray-100 dark:bg-gray-800/50' : ''}`}
+            <div
+              key={i}
               onClick={() => onDayClick(day)}
+              className={`group relative px-2 pt-1.5 pb-1 border-b border-r border-neutral-100 dark:border-neutral-900 cursor-pointer transition-colors ${
+                isWeekend && inCurrentMonth ? 'bg-neutral-50/40 dark:bg-neutral-900/30' : ''
+              } hover:bg-neutral-50 dark:hover:bg-neutral-900/60`}
+              style={{ minHeight: 0 }}
             >
-              <div className={`text-sm font-medium mb-1 ${
-                isToday ? 'text-blue-600 dark:text-blue-400' : 
-                isCurrentMonth ? 'text-gray-800 dark:text-white' : 'text-gray-400'
-              }`}>
-                {day.getDate()}
+              <div className="flex items-center justify-between mb-1">
+                <span className={`inline-flex items-center justify-center text-xs font-medium tabular-nums tracking-tight ${
+                  isToday
+                    ? 'w-5 h-5 rounded-full bg-accent text-white'
+                    : inCurrentMonth
+                      ? 'text-neutral-900 dark:text-neutral-100'
+                      : 'text-neutral-300 dark:text-neutral-700'
+                }`}>
+                  {day.getDate()}
+                </span>
               </div>
-              
-              <div className="space-y-1">
-                {dayEvents.slice(0, 3).map(event => (
-                  <div 
-                    key={event.id}
-                    className="text-xs truncate px-1.5 py-0.5 rounded cursor-pointer hover:opacity-80"
-                    style={{ backgroundColor: event.color + '20', color: event.color }}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onEventClick(event);
-                    }}
-                  >
-                    {event.title}
-                  </div>
+
+              <div className="space-y-0.5">
+                {dayEvents.slice(0, 3).map(ev => (
+                  <EventCard key={ev.id} event={ev} variant="dot" onClick={() => onEventClick(ev)} />
                 ))}
                 {dayEvents.length > 3 && (
-                  <div className="text-xs text-gray-500 dark:text-gray-400">
+                  <div className="text-[10px] text-neutral-500 dark:text-neutral-400 px-1">
                     +{dayEvents.length - 3}
                   </div>
                 )}

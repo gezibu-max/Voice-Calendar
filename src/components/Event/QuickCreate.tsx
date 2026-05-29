@@ -1,6 +1,5 @@
 import { useState } from 'react';
-import { useCalendarStore } from '@/store';
-import { formatTime } from '@/utils/dateUtils';
+import { formatTime, formatDate } from '@/utils/dateUtils';
 import type { Event } from '@/types';
 
 interface QuickCreateProps {
@@ -10,63 +9,62 @@ interface QuickCreateProps {
   onSave: (data: Omit<Event, 'id' | 'createdAt' | 'updatedAt'>) => void;
 }
 
-export default function QuickCreate({ startTime, endTime, onClose, onSave }: QuickCreateProps) {
+export function QuickCreate({ startTime, endTime, onClose, onSave }: QuickCreateProps) {
   const [title, setTitle] = useState('');
-  
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim()) return;
-    
     onSave({
       title: title.trim(),
       description: '',
       startTime,
       endTime,
-      color: '#2563eb',
+      color: '#2383E2',
       colorId: 'blue',
     });
     onClose();
   };
-  
+
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-sm">
-        <div className="p-6">
-          <h2 className="text-xl font-semibold text-gray-800 dark:text-white mb-4">
-            创建事件
-          </h2>
-          
-          <div className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-            {formatTime(startTime)} - {formatTime(endTime)}
+    <div
+      className="fixed inset-0 z-50 flex items-start justify-center pt-[20vh] px-4 bg-neutral-900/20 dark:bg-black/40 backdrop-blur-sm animate-fade-in"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white dark:bg-neutral-950 rounded-xl shadow-pop border border-neutral-200/70 dark:border-neutral-800 w-full max-w-sm animate-pop-in"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <form onSubmit={handleSubmit} className="p-4">
+          <div className="text-[11px] uppercase tracking-wider text-neutral-500 dark:text-neutral-400 mb-2">
+            {formatDate(startTime)} · {formatTime(startTime)} – {formatTime(endTime)}
           </div>
-          
-          <form onSubmit={handleSubmit}>
-            <input
-              type="text"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="输入事件标题..."
-              autoFocus
-            />
-            
-            <div className="flex gap-3 mt-4">
-              <button
-                type="button"
-                onClick={onClose}
-                className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-              >
-                取消
-              </button>
-              <button
-                type="submit"
-                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-              >
-                创建
-              </button>
-            </div>
-          </form>
-        </div>
+
+          <input
+            type="text"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="添加标题…"
+            autoFocus
+            className="w-full bg-transparent border-none outline-none text-base font-medium text-neutral-900 dark:text-neutral-100 placeholder-neutral-300 dark:placeholder-neutral-700"
+          />
+
+          <div className="mt-3 flex justify-end gap-1.5">
+            <button
+              type="button"
+              onClick={onClose}
+              className="h-7 px-2.5 text-xs font-medium text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-900 rounded-md transition-colors"
+            >
+              取消
+            </button>
+            <button
+              type="submit"
+              className="h-7 px-3 text-xs font-medium bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 rounded-md hover:bg-neutral-700 dark:hover:bg-neutral-200 transition-colors"
+            >
+              创建
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );

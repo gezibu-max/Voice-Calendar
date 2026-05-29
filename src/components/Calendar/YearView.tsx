@@ -1,6 +1,5 @@
 import { useCalendarStore } from '@/store';
-import { getMonths, isSameMonth, isSameDay, getDaysInMonth } from '@/utils/dateUtils';
-import type { Event } from '@/types';
+import { getMonths, isSameMonth, isSameDay, getDaysInMonth, getMonthStartDay } from '@/utils/dateUtils';
 
 interface YearViewProps {
   onMonthClick: (date: Date) => void;
@@ -8,83 +7,73 @@ interface YearViewProps {
 
 export const YearView = ({ onMonthClick }: YearViewProps) => {
   const { events, currentDate } = useCalendarStore();
-  
   const months = getMonths();
   const today = new Date();
-  
-  const getEventsForMonth = (month: Date) => {
-    return events.filter(event => isSameMonth(event.startTime, month));
-  };
-  
-  const hasEventInMonth = (month: Date) => {
-    return getEventsForMonth(month).length > 0;
-  };
-  
-  const formatMonthName = (date: Date) => {
-    return date.toLocaleDateString('zh-CN', { month: 'short' });
-  };
-  
+  const weekdays = ['一', '二', '三', '四', '五', '六', '日'];
+
   return (
-    <div className="flex-1 overflow-y-auto p-4">
-      <div className="grid grid-cols-4 gap-4">
+    <div className="flex-1 overflow-y-auto px-6 py-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-x-8 gap-y-8 max-w-6xl mx-auto">
         {months.map(month => {
           const isCurrentMonth = isSameMonth(month, currentDate);
-          const isTodayMonth = isSameMonth(month, today);
           const daysInMonth = getDaysInMonth(month);
-          const monthEvents = getEventsForMonth(month);
-          
+          const startDay = (getMonthStartDay(month) + 6) % 7;
+          const cellsCount = Math.ceil((startDay + daysInMonth) / 7) * 7;
+
           return (
-            <div 
+            <button
               key={month.toDateString()}
-              className={`p-3 border rounded-lg cursor-pointer transition-all hover:bg-gray-50 dark:hover:bg-gray-700 ${
-                isCurrentMonth ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-400' : 
-                'border-gray-200 dark:border-gray-700'
-              }`}
               onClick={() => onMonthClick(month)}
+              className={`text-left p-3 rounded-md border transition-all ${
+                isCurrentMonth
+                  ? 'border-neutral-300 dark:border-neutral-700 bg-neutral-50/60 dark:bg-neutral-900/40'
+                  : 'border-transparent hover:border-neutral-200/80 dark:hover:border-neutral-800 hover:bg-neutral-50/60 dark:hover:bg-neutral-900/40'
+              }`}
             >
-              <div className={`text-sm font-medium mb-2 ${
-                isCurrentMonth ? 'text-blue-600 dark:text-blue-400' : 
-                'text-gray-800 dark:text-white'
-              }`}>
-                {formatMonthName(month)}
+              <div className="flex items-baseline justify-between mb-2">
+                <span className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
+                  {month.toLocaleDateString('zh-CN', { month: 'long' })}
+                </span>
+                <span className="text-[11px] text-neutral-400">
+                  {month.getFullYear()}
+                </span>
               </div>
-              
-              <div className="grid grid-cols-7 gap-px">
-                {Array.from({ length: daysInMonth }, (_, i) => {
-                  const day = new Date(month.getFullYear(), month.getMonth(), i + 1);
+
+              <div className="grid grid-cols-7 gap-0.5">
+                {weekdays.map(w => (
+                  <div key={w} className="h-5 text-[10px] text-neutral-400 dark:text-neutral-500 grid place-items-center">
+                    {w}
+                  </div>
+                ))}
+                {Array.from({ length: cellsCount }, (_, i) => {
+                  const dayNum = i - startDay + 1;
+                  if (dayNum < 1 || dayNum > daysInMonth) {
+                    return <div key={i} className="h-5" />;
+                  }
+                  const day = new Date(month.getFullYear(), month.getMonth(), dayNum);
                   const isToday = isSameDay(day, today);
-                  const hasEvent = monthEvents.some(e => isSameDay(e.startTime, day));
-                  
+                  const hasEvent = events.some(e => isSameDay(e.startTime, day));
+
                   return (
-                    <div 
+                    <div
                       key={i}
-                      className={`h-5 flex items-center justify-center text-xs ${
-                        isToday ? 'bg-blue-500 text-white rounded-full' :
-                        hasEvent ? 'text-blue-600 dark:text-blue-400' :
-                        'text-gray-600 dark:text-gray-400'
+                      className={`h-5 grid place-items-center text-[10px] tabular-nums rounded-sm ${
+                        isToday
+                          ? 'bg-accent text-white font-medium'
+                          : hasEvent
+                            ? 'text-neutral-900 dark:text-neutral-100 font-medium relative'
+                            : 'text-neutral-500 dark:text-neutral-500'
                       }`}
                     >
-                      {i + 1}
+                      {dayNum}
+                      {hasEvent && !isToday && (
+                        <span className="absolute bottom-0 w-1 h-1 rounded-full bg-accent" />
+                      )}
                     </div>
                   );
                 })}
               </div>
-              
-              {hasEventInMonth(month) && (
-                <div className="mt-2 flex flex-wrap gap-1">
-                  {monthEvents.slice(0, 2).map(event => (
-                    <div 
-                      key={event.id}
-                      className="w-2 h-2 rounded-full"
-                      style={{ backgroundColor: event.color }}
-                    />
-                  ))}
-                  {monthEvents.length > 2 && (
-                    <span className="text-xs text-gray-500 dark:text-gray-400">+{monthEvents.length - 2}</span>
-                  )}
-                </div>
-              )}
-            </div>
+            </button>
           );
         })}
       </div>

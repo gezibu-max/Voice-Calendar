@@ -1,0 +1,321 @@
+"""语音/自然语言文字 → 结构化日历事件解析。
+
+接收一段自然语言（通常是语音识别后的文本），调用大模型抽取出一个或多个日历事件。
+失败时由前端回退到本地正则 parser。
+"""
+from __future__ import annotations
+
+import json
+import logging
+import re
+import urllib.error
+import urllib.request
+from datetime import datetime, timedelta
+from typing import List, Optional
+
+from fastapi import APIRouter, HTTPException, status
+from pydantic import BaseModel, Field
+
+from app.core.config import get_settings
+
+
+logger = logging.getLogger(__name__)
+router = APIRouter(prefix="/api/parse", tags=["parse"])
+
+
+class ParseRequest(BaseModel):
+    text: str = Field(..., min_length=1, max_length=20000)
+    now: Optional[datetime] = Field(
+        default=None,
+        description="客户端当前时间，用于解析'明天/下周三'等相对时间。缺省用服务器时间。",
+    )
+    timezone: Optional[str] = Field(default=None, description="客户端 IANA 时区名，例如 Asia/Shanghai。")
+    mode: str = Field(default="speech", description="speech=单条语音；schedule=课程表/批量 OCR")
+    weeks_to_expand: int = Field(default=16, ge=1, le=30, description="schedule 模式下重复事件展开周数")
+
+
+class ParsedEvent(BaseModel):
+    title: str
+    description: str = ""
+    start_time: datetime
+    end_time: datetime
+    color_id: str = "blue"
+    duration_inferred: bool = False
+    duration_reason: str = ""
+    weekday: Optional[int] = Field(default=None, ge=0, le=6)
+    recurrence: Optional[str] = None
+
+
+class ParseResponse(BaseModel):
+    events: List[ParsedEvent]
+    raw: Optional[str] = None
+
+
+SCHEDULE_PROMPT = """你是课程表/日程表解析助手。用户会粘贴一段从课程表截图 OCR 出来的文字（中文，常含错字、空格混乱、表格残缺）。\
+你需要从中找出**所有**课程/会议条目，并按 JSON 输出。
+
+输入特点：
+- 通常按"星期一/二/三/四/五/六/日"或英文 Mon/Tue 分列。
+- 节次形式："1-2 节"、"3,4 节"、"早 8:00-9:50"、"08:00 ~ 09:50"等。
+- 一行可能包含：课程名 / 老师 / 教室 / 周次（如"1-16周"、"双周"、"奇数周"）。
+- OCR 噪声："2节" 可能识别成"Z节"、"教305"可能识别成"教3O5"，请尽量纠错。
+
+输出规则：
+1. 严格输出 JSON：{"events": [...]}。无法解析时返回 {"events": []}。
+2. **每门课只输出一次**，不要重复展开成多周（后端会自动展开）。每条字段：
+   - title: 课程名（不含老师姓名前缀）
+   - description: "<老师>·<教室>" 这种简洁拼接，OCR 不全可省略对应段
+   - start_time / end_time: ISO 8601 本地时间。把课程定到**本周**对应的星期几；如果该课已过去，改放到下周对应日。具体时刻按节次映射来定。
+   - color_id: ["blue","green","orange","purple","pink","red","gray"] 选一个
+   - duration_inferred / duration_reason: 节次时间清晰时 false，只能猜时 true
+   - weekday: 0-6（周一=0…周日=6），就是该课在一周里的星期几
+   - recurrence: 字符串，描述这门课在"哪些周"上
+     * "every"  = 每周都上（默认）
+     * "odd"    = 奇数周
+     * "even"   = 双周/偶数周
+     * "1-8"    = 第 1 到第 8 周
+     * "3,5,7"  = 第 3、5、7 周
+     * "once"   = 只这一次（一次性会议/活动）
+
+3. 颜色策略：不同的**课程名**用不同的 color_id（轮换 7 种颜色）。同名课程必须用同一色。
+
+4. 节次时间常用映射（无明确时间时按下面估，写进 duration_reason 说明）：
+   - 1-2 节: 08:00–09:50
+   - 3-4 节: 10:00–11:50
+   - 5-6 节: 14:00–15:50
+   - 7-8 节: 16:00–17:50
+   - 9-10 节: 19:00–20:50
+   - 单节按 50 分钟估
+"""
+
+
+SYSTEM_PROMPT = """你是日历事件抽取助手。用户会给你一段中文（可能含口语、错别字、连读），\
+你要从中找出**所有**独立的日历事件，并按 JSON 输出。
+
+规则：
+1. 严格输出 JSON，不要任何解释、Markdown、前后空白。
+2. 顶层是对象：{"events": [ ... ]}。如果没识别到任何事件，返回 {"events": []}。
+3. 每个事件字段：
+   - title: 简短标题（不超过 30 字，去掉"提醒我/帮我安排"这类指令词）
+   - description: 备注（可空字符串）
+   - start_time: ISO 8601 本地时间，例如 "2026-05-30T15:00:00"
+   - end_time: ISO 8601 本地时间，必须晚于 start_time
+   - color_id: 从 ["blue","green","orange","purple","pink","red","gray"] 中按事件性质挑一个
+   - duration_inferred: 布尔值。用户**没有**明说时长（"开会一小时"、"两点到四点"算明说）时设 true
+   - duration_reason: 简短中文（≤20字）说明你为什么定这个时长。例如"按例行周会估 1 小时"、"用户明确说 2 小时"、"晚餐通常 1.5 小时"
+4. 时间推理：
+   - "明天/后天/下周三/下月初" 等相对时间以参考时间 NOW 为准。
+   - 缺失具体时刻时，根据语境选典型值（早会 9:00，午饭 12:00，下午会 14:00 / 15:00，晚饭 19:00，睡前提醒 22:00）。
+   - 一段话里多个事件要全部抽出。时间互不重叠保留各自时间；如同时段冲突，按文中顺序串行（前者结束后接后者开始）。
+5. 时长推测表（用户没明说时长时按下表估，并把依据写进 duration_reason）：
+   - 站会 / 晨会：15 分钟
+   - 例行会议 / 周会 / 沟通 / 1 对 1 / 复盘 / 评审：1 小时
+   - 培训 / 课程 / 公开课 / 讲座 / 直播 / workshop：1.5 小时
+   - 大会 / 全员会 / 季度会 / 战略会：2 小时
+   - 面试：45 分钟（技术面 1 小时）
+   - 早餐：30 分钟
+   - 午餐 / 商务午餐：1 小时
+   - 晚餐 / 聚餐 / 家宴：1.5 小时
+   - 喝咖啡 / 喝茶 / 闲聊：45 分钟
+   - 健身 / 跑步 / 瑜伽 / 训练：1 小时
+   - 球类 / 比赛 / 远足 / 户外：2 小时
+   - 看电影：2 小时（IMAX/史诗片可 2.5 小时）
+   - 看演出 / 演唱会 / 话剧：2.5 小时
+   - 通勤 / 路上 / 接送：30 分钟
+   - 飞行 / 高铁：按城市间常识估（不确定时给 2 小时并在 reason 里说明）
+   - 看医生 / 体检：1 小时
+   - 美容 / 理发 / 按摩：1 小时
+   - 提醒 / 闹钟 / 截止 deadline：5 分钟（仅占位）
+   - 工作专注 / 写代码 / 写文档 / 学习：默认 2 小时
+   - 加班：2 小时（除非明说）
+   - 旅行 / 出差 / 度假 / 跨多日的事件：按用户描述的天数算，end_time 设到末日的 18:00
+   - 不在表中且无法判断：1 小时，duration_reason 写 "默认 1 小时"
+6. 当用户**明确说了**时长（"开会一个半小时"、"3 点到 5 点"、"持续 30 分钟"），duration_inferred 必须是 false，duration_reason 写 "用户明确指定"。
+7. 颜色建议：会议 blue，运动 green，吃饭 orange，娱乐/演出 purple，重要/deadline red，提醒/家庭 pink，通勤/其它 gray。
+"""
+
+
+def _call_llm(text: str, now_iso: str, tz: str, mode: str, weeks: int) -> str:
+    """调用 OpenAI 兼容的 chat completions 接口，返回 raw JSON 字符串。"""
+    settings = get_settings()
+    if not settings.llm_api_key:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="LLM_API_KEY not configured",
+        )
+
+    system_prompt = SCHEDULE_PROMPT if mode == "schedule" else SYSTEM_PROMPT
+    extra_user = f"\nWEEKS_TO_EXPAND = {weeks}\n" if mode == "schedule" else ""
+
+    user_prompt = (
+        f"NOW = {now_iso}\nTIMEZONE = {tz}{extra_user}\n\n"
+        f"原文：\n{text}\n\n"
+        "请输出 JSON。"
+    )
+
+    payload = {
+        "model": settings.llm_model,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ],
+        "temperature": 0.1,
+        "response_format": {"type": "json_object"},
+    }
+
+    url = settings.llm_base_url.rstrip("/") + "/chat/completions"
+    req = urllib.request.Request(
+        url,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {settings.llm_api_key}",
+        },
+        method="POST",
+    )
+
+    try:
+        with urllib.request.urlopen(req, timeout=settings.llm_timeout) as resp:
+            body = resp.read().decode("utf-8")
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")[:500]
+        logger.warning("LLM HTTP %s: %s", exc.code, detail)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"LLM upstream error {exc.code}",
+        ) from exc
+    except urllib.error.URLError as exc:
+        logger.warning("LLM network error: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+            detail="LLM unreachable",
+        ) from exc
+
+    try:
+        data = json.loads(body)
+        return data["choices"][0]["message"]["content"]
+    except (KeyError, IndexError, json.JSONDecodeError) as exc:
+        logger.warning("Unexpected LLM response shape: %s", body[:300])
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="LLM returned malformed response",
+        ) from exc
+
+
+def _normalize_events(raw: str) -> List[ParsedEvent]:
+    """容忍模型偶尔多包一层 markdown 或加前后说明文字。"""
+    text = raw.strip()
+    if text.startswith("```"):
+        text = text.strip("`")
+        if text.lower().startswith("json"):
+            text = text[4:]
+        text = text.strip()
+
+    try:
+        obj = json.loads(text)
+    except json.JSONDecodeError:
+        start = text.find("{")
+        end = text.rfind("}")
+        if start == -1 or end == -1 or end <= start:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="LLM did not return JSON",
+            )
+        obj = json.loads(text[start : end + 1])
+
+    items = obj.get("events", []) if isinstance(obj, dict) else []
+    if not isinstance(items, list):
+        return []
+
+    events: List[ParsedEvent] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        try:
+            events.append(ParsedEvent(**item))
+        except Exception as exc:  # noqa: BLE001 — 单条失败不影响其它
+            logger.info("Skip invalid parsed event: %s (%s)", item, exc)
+            continue
+    return events
+
+
+def _expand_recurrence(events: List[ParsedEvent], weeks: int) -> List[ParsedEvent]:
+    """schedule 模式下把模型输出的"每门课一次"展开成 N 周。
+
+    若事件没有 weekday/recurrence，按"every"处理（每周展开）。
+    """
+    if weeks <= 1:
+        return events
+
+    expanded: List[ParsedEvent] = []
+    for ev in events:
+        rule = (ev.recurrence or "every").strip().lower()
+        if rule == "once":
+            expanded.append(ev)
+            continue
+
+        target_weeks = _resolve_week_set(rule, weeks)
+        if not target_weeks:
+            target_weeks = list(range(1, weeks + 1))
+
+        for w in target_weeks:
+            offset = timedelta(weeks=w - 1)
+            new_start = ev.start_time + offset
+            new_end = ev.end_time + offset
+            expanded.append(ev.model_copy(update={
+                "start_time": new_start,
+                "end_time": new_end,
+            }))
+    return expanded
+
+
+def _assign_distinct_colors(events: List[ParsedEvent]) -> List[ParsedEvent]:
+    """给同名事件分配同色、不同名事件用不同色（轮换 7 色）。"""
+    palette = ["blue", "green", "orange", "purple", "pink", "red", "gray"]
+    title_to_color: dict = {}
+    next_idx = 0
+    out: List[ParsedEvent] = []
+    for ev in events:
+        key = ev.title.strip()
+        if key not in title_to_color:
+            title_to_color[key] = palette[next_idx % len(palette)]
+            next_idx += 1
+        out.append(ev.model_copy(update={"color_id": title_to_color[key]}))
+    return out
+
+
+def _resolve_week_set(rule: str, weeks: int) -> List[int]:
+    """把 'every' / 'odd' / 'even' / '1-8' / '3,5,7' 解析成 1-indexed 的周列表。"""
+    rule = rule.replace(" ", "")
+    if rule in ("every", ""):
+        return list(range(1, weeks + 1))
+    if rule == "odd":
+        return [w for w in range(1, weeks + 1) if w % 2 == 1]
+    if rule == "even":
+        return [w for w in range(1, weeks + 1) if w % 2 == 0]
+
+    # "1-8" 形式
+    m = re.match(r"^(\d+)-(\d+)$", rule)
+    if m:
+        a, b = int(m.group(1)), int(m.group(2))
+        if a > b:
+            a, b = b, a
+        return [w for w in range(a, b + 1) if 1 <= w <= weeks]
+
+    # "3,5,7" 形式
+    if re.match(r"^[0-9,]+$", rule):
+        return sorted({int(x) for x in rule.split(",") if x and 1 <= int(x) <= weeks})
+
+    return list(range(1, weeks + 1))
+
+
+@router.post("", response_model=ParseResponse, summary="解析自然语言为日历事件列表")
+def parse(req: ParseRequest) -> ParseResponse:
+    now_iso = (req.now or datetime.now()).isoformat(timespec="seconds")
+    tz = req.timezone or "Asia/Shanghai"
+    raw = _call_llm(req.text, now_iso, tz, req.mode, req.weeks_to_expand)
+    events = _normalize_events(raw)
+    if req.mode == "schedule":
+        events = _assign_distinct_colors(events)
+        events = _expand_recurrence(events, req.weeks_to_expand)
+    return ParseResponse(events=events, raw=raw)

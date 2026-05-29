@@ -11,7 +11,8 @@ interface CalendarState {
   isEventModalOpen: boolean;
   isQuickCreateOpen: boolean;
   quickCreateTime: { start: Date; end: Date } | null;
-  
+  isVoiceModalOpen: boolean;
+
   setEvents: (events: Event[]) => void;
   addEvent: (event: Omit<Event, 'id' | 'createdAt' | 'updatedAt'>) => void;
   updateEvent: (id: string, updates: Partial<Event>) => void;
@@ -28,6 +29,9 @@ interface CalendarState {
   
   openQuickCreate: (start: Date, end: Date) => void;
   closeQuickCreate: () => void;
+
+  openVoiceModal: () => void;
+  closeVoiceModal: () => void;
 }
 
 export const useCalendarStore = create<CalendarState>((set) => ({
@@ -40,7 +44,8 @@ export const useCalendarStore = create<CalendarState>((set) => ({
   isEventModalOpen: false,
   isQuickCreateOpen: false,
   quickCreateTime: null,
-  
+  isVoiceModalOpen: false,
+
   setEvents: (events) => set({ events }),
   
   addEvent: (eventData) => set((state) => {
@@ -81,9 +86,12 @@ export const useCalendarStore = create<CalendarState>((set) => ({
   openEventModal: (event) => set({ selectedEvent: event, isEventModalOpen: true }),
   closeEventModal: () => set({ isEventModalOpen: false, selectedEvent: null }),
   
-  openQuickCreate: (start, end) => set({ 
-    isQuickCreateOpen: true, 
-    quickCreateTime: { start, end } 
+  openQuickCreate: (start, end) => set({
+    isQuickCreateOpen: true,
+    quickCreateTime: { start, end }
   }),
   closeQuickCreate: () => set({ isQuickCreateOpen: false, quickCreateTime: null }),
+
+  openVoiceModal: () => set({ isVoiceModalOpen: true }),
+  closeVoiceModal: () => set({ isVoiceModalOpen: false }),
 }));

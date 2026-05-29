@@ -1,30 +1,44 @@
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useState } from 'react';
 import { useCalendarStore } from '@/store';
 import { Header } from '@/components/Header/Header';
 import { Calendar } from '@/components/Calendar/Calendar';
 import { EventModal } from '@/components/Event/EventModal';
 import { QuickCreate } from '@/components/Event/QuickCreate';
+import { EventPreviewModal } from '@/components/Event/EventPreviewModal';
+import { VoiceModal } from '@/components/VoiceModal';
 import { useEvents } from '@/hooks/useEvents';
-import { parseVoiceCommand } from '@/utils/parser';
 import { useSpeechSynthesis } from '@/hooks/useSpeechSynthesis';
+import { useSpeechRecognition } from '@/hooks/useSpeechRecognition';
+import { parseEventsFromText, type ParsedDraft, type ParseStatus } from '@/utils/llmParse';
 import type { Event } from '@/types';
 
 function App() {
-  const { 
-    isEventModalOpen, 
-    selectedEvent, 
+  const {
+    isEventModalOpen,
+    selectedEvent,
     closeEventModal,
     isQuickCreateOpen,
     quickCreateTime,
     closeQuickCreate,
+    isVoiceModalOpen,
+    closeVoiceModal,
     openEventModal,
     theme,
     setTheme,
   } = useCalendarStore();
-  
+
   const { events, createEvent, updateEvent, deleteEvent } = useEvents();
   const { speak } = useSpeechSynthesis();
-  
+  const speech = useSpeechRecognition();
+
+  const [parsing, setParsing] = useState(false);
+  const [parseResult, setParseResult] = useState<{
+    status: ParseStatus;
+    drafts: ParsedDraft[];
+    text: string;
+    message?: string;
+  } | null>(null);
+
   useEffect(() => {
     const savedTheme = localStorage.getItem('theme') as 'light' | 'dark' | null;
     if (savedTheme) {
@@ -34,11 +48,11 @@ function App() {
       setTheme(prefersDark ? 'dark' : 'light');
     }
   }, [setTheme]);
-  
+
   useEffect(() => {
     localStorage.setItem('theme', theme);
   }, [theme]);
-  
+
   useEffect(() => {
     const checkReminders = () => {
       const now = new Date();
@@ -47,12 +61,12 @@ function App() {
         const diffMs = eventTime.getTime() - now.getTime();
         return diffMs > 0 && diffMs <= 1000 * 60 * 5;
       });
-      
+
       if (upcomingEvents.length > 0) {
         const event = upcomingEvents[0];
         const message = `即将有事件：${event.title}，时间是${event.startTime.toLocaleTimeString('zh-CN')}`;
         speak(message);
-        
+
         if ('Notification' in window && Notification.permission === 'granted') {
           new Notification('日历提醒', {
             body: message,
@@ -61,88 +75,94 @@ function App() {
         }
       }
     };
-    
+
     const interval = setInterval(checkReminders, 60000);
     return () => clearInterval(interval);
   }, [events, speak]);
-  
+
   useEffect(() => {
     if ('Notification' in window && Notification.permission === 'default') {
       Notification.requestPermission();
     }
   }, []);
-  
-  const handleVoiceCommand = useCallback((text: string) => {
-    const parsed = parseVoiceCommand(text);
-    if (parsed) {
-      createEvent({
-        title: parsed.title,
-        description: parsed.description,
-        startTime: parsed.startTime,
-        endTime: parsed.endTime,
-        color: '#2563eb',
-        colorId: 'blue',
+
+  const handleVoiceCommand = useCallback(async (text: string, mode: 'speech' | 'schedule' = 'speech') => {
+    if (!text.trim()) return;
+    setParsing(true);
+    try {
+      const result = await parseEventsFromText(text, { mode });
+      setParseResult({
+        status: result.status,
+        drafts: result.drafts,
+        text: result.text,
+        message: result.message,
       });
-      speak(`已创建事件：${parsed.title}`);
-    } else if (text.includes('查看') || text.includes('查询')) {
-      const todayEvents = events.filter(e => {
-        const eventDate = new Date(e.startTime);
-        const today = new Date();
-        return eventDate.toDateString() === today.toDateString();
-      });
-      
-      if (todayEvents.length > 0) {
-        const message = `今天有${todayEvents.length}个事件：${todayEvents.map(e => e.title).join('、')}`;
-        speak(message);
-      } else {
-        speak('今天没有事件');
+      speech.resetTranscript();
+      closeVoiceModal();
+      if (result.status === 'ok' && result.drafts.length === 0) {
+        speak('没有识别到事件');
       }
-    } else if (text.includes('删除')) {
-      const match = text.match(/删除(.+?)事件/);
-      if (match) {
-        const eventTitle = match[1].trim();
-        const event = events.find(e => e.title.includes(eventTitle));
-        if (event) {
-          deleteEvent(event.id);
-          speak(`已删除事件：${eventTitle}`);
-        } else {
-          speak(`未找到事件：${eventTitle}`);
-        }
-      }
+    } finally {
+      setParsing(false);
     }
-  }, [events, createEvent, deleteEvent, speak]);
-  
+  }, [speak, speech, closeVoiceModal]);
+
+  const handleRetryParse = useCallback(async (text: string) => {
+    setParsing(true);
+    try {
+      const result = await parseEventsFromText(text);
+      setParseResult({
+        status: result.status,
+        drafts: result.drafts,
+        text: result.text,
+        message: result.message,
+      });
+    } finally {
+      setParsing(false);
+    }
+  }, []);
+
+  const handleConfirmDrafts = useCallback((drafts: ParsedDraft[]) => {
+    drafts.forEach(d => {
+      createEvent({
+        title: d.title,
+        description: d.description,
+        startTime: d.startTime,
+        endTime: d.endTime,
+        color: d.color,
+        colorId: d.colorId,
+      });
+    });
+    if (drafts.length === 1) {
+      speak(`已创建事件：${drafts[0].title}`);
+    } else if (drafts.length > 1) {
+      speak(`已创建 ${drafts.length} 个事件`);
+    }
+  }, [createEvent, speak]);
+
   const handleEventClick = useCallback((event: Event) => {
     openEventModal(event);
   }, [openEventModal]);
-  
+
   const handleSaveEvent = useCallback((data: Omit<Event, 'id' | 'createdAt' | 'updatedAt'>) => {
     createEvent(data);
   }, [createEvent]);
-  
+
   const handleUpdateEvent = useCallback((id: string, data: Partial<Event>) => {
     updateEvent(id, data);
   }, [updateEvent]);
-  
+
   const handleDeleteEvent = useCallback((id: string) => {
     deleteEvent(id);
   }, [deleteEvent]);
-  
-  const handleQuickCreate = useCallback((startTime: Date, endTime: Date) => {
-    if (!quickCreateTime || 
-        quickCreateTime.start.getTime() !== startTime.getTime() || 
-        quickCreateTime.end.getTime() !== endTime.getTime()) {
-      closeQuickCreate();
-    }
-  }, [quickCreateTime, closeQuickCreate]);
-  
+
   return (
-    <div className={`min-h-screen flex flex-col ${theme === 'dark' ? 'dark' : ''}`}>
-      <div className="flex-1 flex flex-col bg-gray-50 dark:bg-gray-900">
-        <Header onVoiceCommand={handleVoiceCommand} />
+    <div className={`h-screen flex flex-col ${theme === 'dark' ? 'dark' : ''}`}>
+      <div className="flex-1 flex flex-col min-h-0 bg-white dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100">
+        <Header />
         <Calendar onEventClick={handleEventClick} />
       </div>
-      
+
       {isEventModalOpen && (
         <EventModal
           event={selectedEvent}
@@ -152,13 +172,44 @@ function App() {
           onDelete={handleDeleteEvent}
         />
       )}
-      
+
       {isQuickCreateOpen && quickCreateTime && (
         <QuickCreate
           startTime={quickCreateTime.start}
           endTime={quickCreateTime.end}
           onClose={closeQuickCreate}
           onSave={handleSaveEvent}
+        />
+      )}
+
+      {isVoiceModalOpen && (
+        <VoiceModal
+          isSupported={speech.isSupported}
+          isListening={speech.isListening}
+          finalTranscript={speech.finalTranscript}
+          interimTranscript={speech.interimTranscript}
+          parsing={parsing}
+          onStart={speech.startListening}
+          onStop={speech.stopListening}
+          onSubmit={handleVoiceCommand}
+          onClose={() => {
+            speech.stopListening();
+            speech.resetTranscript();
+            closeVoiceModal();
+          }}
+        />
+      )}
+
+      {parseResult && (
+        <EventPreviewModal
+          status={parseResult.status}
+          drafts={parseResult.drafts}
+          text={parseResult.text}
+          message={parseResult.message}
+          retrying={parsing}
+          onConfirm={handleConfirmDrafts}
+          onRetry={handleRetryParse}
+          onClose={() => setParseResult(null)}
         />
       )}
     </div>
