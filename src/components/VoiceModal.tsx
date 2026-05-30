@@ -178,7 +178,7 @@ export const VoiceModal = ({
                 <div className="flex items-center gap-3 w-full">
                   <Waveform active={isListening} />
                   <p className="text-sm text-neutral-500 dark:text-neutral-400">
-                    {isListening ? '请开始说话…' : '点击下方按钮重新开始'}
+                    {isListening ? '说"明天下午三点开会"创建，或"明天有什么事"查询…' : '点击下方按钮重新开始'}
                   </p>
                 </div>
               ) : (

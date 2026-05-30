@@ -5,11 +5,13 @@ import { Calendar } from '@/components/Calendar/Calendar';
 import { EventModal } from '@/components/Event/EventModal';
 import { QuickCreate } from '@/components/Event/QuickCreate';
 import { EventPreviewModal } from '@/components/Event/EventPreviewModal';
+import { QueryResultModal } from '@/components/Event/QueryResultModal';
 import { VoiceModal } from '@/components/VoiceModal';
 import { useEvents } from '@/hooks/useEvents';
 import { useSpeechSynthesis } from '@/hooks/useSpeechSynthesis';
 import { useSpeechRecognition } from '@/hooks/useSpeechRecognition';
-import { parseEventsFromText, parseEventsFromImage, type ParsedDraft, type ParseStatus } from '@/utils/llmParse';
+import { parseEventsFromText, parseEventsFromImage, queryEvents, type ParsedDraft, type ParseStatus, type QueryIntent } from '@/utils/llmParse';
+import { isQueryIntent } from '@/utils/intent';
 import type { Event } from '@/types';
 
 function App() {
@@ -37,6 +39,12 @@ function App() {
     drafts: ParsedDraft[];
     text: string;
     message?: string;
+  } | null>(null);
+  const [queryResult, setQueryResult] = useState<{
+    question: string;
+    answer: string;
+    intent: QueryIntent;
+    matched: Event[];
   } | null>(null);
 
   useEffect(() => {
@@ -88,6 +96,46 @@ function App() {
 
   const handleVoiceCommand = useCallback(async (text: string, mode: 'speech' | 'schedule' = 'speech') => {
     if (!text.trim()) return;
+
+    // 如果是查询意图，分流到查询管线
+    if (mode === 'speech' && isQueryIntent(text)) {
+      setParsing(true);
+      try {
+        const digest = events.map(e => ({
+          id: e.id,
+          title: e.title,
+          startTime: e.startTime,
+          endTime: e.endTime,
+          allDay: e.allDay,
+        }));
+        const result = await queryEvents(text, digest);
+        speech.resetTranscript();
+        closeVoiceModal();
+        if (result.status === 'ok') {
+          const matched = events.filter(e => result.highlightIds.includes(e.id));
+          setQueryResult({
+            question: text,
+            answer: result.answer,
+            intent: result.intent,
+            matched,
+          });
+          if (result.answer) speak(result.answer);
+        } else {
+          const fallback = result.message || '查询失败，请稍后重试';
+          setQueryResult({
+            question: text,
+            answer: fallback,
+            intent: 'other',
+            matched: [],
+          });
+          speak(fallback);
+        }
+      } finally {
+        setParsing(false);
+      }
+      return;
+    }
+
     setParsing(true);
     try {
       const result = await parseEventsFromText(text, { mode });
@@ -105,7 +153,7 @@ function App() {
     } finally {
       setParsing(false);
     }
-  }, [speak, speech, closeVoiceModal]);
+  }, [speak, speech, closeVoiceModal, events]);
 
   const handleImageCommand = useCallback(async (file: File) => {
     setParsing(true);
@@ -231,6 +279,17 @@ function App() {
           onConfirm={handleConfirmDrafts}
           onRetry={handleRetryParse}
           onClose={() => setParseResult(null)}
+        />
+      )}
+
+      {queryResult && (
+        <QueryResultModal
+          question={queryResult.question}
+          answer={queryResult.answer}
+          intent={queryResult.intent}
+          matched={queryResult.matched}
+          onClose={() => setQueryResult(null)}
+          onEventClick={openEventModal}
         />
       )}
     </div>

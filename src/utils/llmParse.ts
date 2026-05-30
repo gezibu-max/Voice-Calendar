@@ -173,3 +173,91 @@ export const parseEventsFromImage = async (
     };
   }
 };
+
+export type QueryIntent = 'list' | 'count' | 'conflict' | 'free' | 'next' | 'when' | 'other';
+
+export interface QueryResult {
+  status: 'ok' | 'error';
+  answer: string;
+  highlightIds: string[];
+  intent: QueryIntent;
+  message?: string;
+}
+
+interface QueryApiResponse {
+  answer: string;
+  highlight_ids: string[];
+  intent: string;
+}
+
+export interface QueryEventDigest {
+  id: string;
+  title: string;
+  startTime: Date;
+  endTime: Date;
+  allDay: boolean;
+}
+
+export const queryEvents = async (
+  text: string,
+  events: QueryEventDigest[],
+): Promise<QueryResult> => {
+  const trimmed = text.trim();
+  if (!trimmed) {
+    return { status: 'error', answer: '', highlightIds: [], intent: 'other', message: 'empty query' };
+  }
+
+  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Shanghai';
+  const payload = {
+    text: trimmed,
+    now: new Date().toISOString(),
+    timezone: tz,
+    events: events.map(e => ({
+      id: e.id,
+      title: e.title,
+      start_time: e.startTime.toISOString(),
+      end_time: e.endTime.toISOString(),
+      all_day: e.allDay,
+    })),
+  };
+
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 30_000);
+    const resp = await fetch(`${API_BASE}/query`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+
+    if (!resp.ok) {
+      let friendly = `HTTP ${resp.status}`;
+      if (resp.status === 503) friendly = '后端未配置大模型 API Key';
+      else if (resp.status === 502) friendly = '大模型上游错误，请稍后重试';
+      else if (resp.status === 504) friendly = '大模型超时或网络不通';
+      return { status: 'error', answer: '', highlightIds: [], intent: 'other', message: friendly };
+    }
+
+    const data = (await resp.json()) as QueryApiResponse;
+    const intent = (['list', 'count', 'conflict', 'free', 'next', 'when'].includes(data.intent)
+      ? data.intent
+      : 'other') as QueryIntent;
+    return {
+      status: 'ok',
+      answer: data.answer || '',
+      highlightIds: data.highlight_ids || [],
+      intent,
+    };
+  } catch (err) {
+    const isAbort = err instanceof DOMException && err.name === 'AbortError';
+    return {
+      status: 'error',
+      answer: '',
+      highlightIds: [],
+      intent: 'other',
+      message: isAbort ? '查询超时，请稍后再试' : err instanceof Error ? err.message : String(err),
+    };
+  }
+};
