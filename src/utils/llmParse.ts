@@ -1,6 +1,6 @@
 import { getColorById } from './colors';
 
-const API_BASE = 'http://127.0.0.1:8011/api';
+const API_BASE = 'http://127.0.0.1:8012/api';
 
 export interface ParsedDraft {
   title: string;
@@ -11,6 +11,7 @@ export interface ParsedDraft {
   color: string;
   durationInferred: boolean;
   durationReason: string;
+  priority?: 'P0' | 'P1' | 'P2' | 'P3';
 }
 
 interface ParseApiEvent {
@@ -21,6 +22,7 @@ interface ParseApiEvent {
   color_id?: string;
   duration_inferred?: boolean;
   duration_reason?: string;
+  priority?: string;
 }
 
 interface ParseApiResponse {
@@ -38,6 +40,7 @@ const toDraft = (e: ParseApiEvent): ParsedDraft => {
     color: getColorById(colorId),
     durationInferred: e.duration_inferred ?? false,
     durationReason: e.duration_reason || '',
+    priority: (e.priority as ParsedDraft['priority']) || 'P2',
   };
 };
 
@@ -258,6 +261,110 @@ export const queryEvents = async (
       highlightIds: [],
       intent: 'other',
       message: isAbort ? '查询超时，请稍后再试' : err instanceof Error ? err.message : String(err),
+    };
+  }
+};
+
+export interface InsightItem {
+  text: string;
+  eventIds: string[];
+}
+
+export interface InsightResult {
+  status: 'ok' | 'error';
+  summary: string;
+  conflicts: InsightItem[];
+  suggestions: InsightItem[];
+  pace: InsightItem[];
+  followUps: InsightItem[];
+  message?: string;
+}
+
+interface InsightApiItem {
+  text: string;
+  event_ids?: string[];
+}
+
+interface InsightApiResponse {
+  summary: string;
+  conflicts?: InsightApiItem[];
+  suggestions?: InsightApiItem[];
+  pace?: InsightApiItem[];
+  follow_ups?: InsightApiItem[];
+}
+
+const toItem = (x: InsightApiItem): InsightItem => ({
+  text: x.text,
+  eventIds: x.event_ids || [],
+});
+
+export const fetchInsights = async (
+  events: Array<{ id: string; title: string; startTime: Date; endTime: Date; allDay: boolean; priority: string }>,
+  scopeStart: Date,
+  scopeEnd: Date,
+): Promise<InsightResult> => {
+  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Shanghai';
+  const payload = {
+    now: new Date().toISOString(),
+    timezone: tz,
+    scope_start: scopeStart.toISOString(),
+    scope_end: scopeEnd.toISOString(),
+    events: events.map(e => ({
+      id: e.id,
+      title: e.title,
+      start_time: e.startTime.toISOString(),
+      end_time: e.endTime.toISOString(),
+      all_day: e.allDay,
+      priority: e.priority,
+    })),
+  };
+
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 60_000);
+    const resp = await fetch(`${API_BASE}/insights`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+
+    if (!resp.ok) {
+      let friendly = `HTTP ${resp.status}`;
+      if (resp.status === 503) friendly = '后端未配置大模型 API Key';
+      else if (resp.status === 502) friendly = '大模型上游错误，请稍后重试';
+      else if (resp.status === 504) friendly = '大模型超时或网络不通';
+      return {
+        status: 'error',
+        summary: '',
+        conflicts: [],
+        suggestions: [],
+        pace: [],
+        followUps: [],
+        message: friendly,
+      };
+    }
+
+    const data = (await resp.json()) as InsightApiResponse;
+    return {
+      status: 'ok',
+      summary: data.summary || '',
+      conflicts: (data.conflicts || []).map(toItem),
+      suggestions: (data.suggestions || []).map(toItem),
+      pace: (data.pace || []).map(toItem),
+      followUps: (data.follow_ups || []).map(toItem),
+    };
+  } catch (err) {
+    const isAbort = err instanceof DOMException && err.name === 'AbortError';
+    return {
+      status: 'error',
+      summary: '',
+      conflicts: [],
+      suggestions: [],
+      pace: [],
+      followUps: [],
+      message: isAbort ? '复盘超时，请稍后再试' : err instanceof Error ? err.message : String(err),
     };
   }
 };

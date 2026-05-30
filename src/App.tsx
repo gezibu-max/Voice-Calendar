@@ -6,11 +6,13 @@ import { EventModal } from '@/components/Event/EventModal';
 import { QuickCreate } from '@/components/Event/QuickCreate';
 import { EventPreviewModal } from '@/components/Event/EventPreviewModal';
 import { QueryResultModal } from '@/components/Event/QueryResultModal';
+import { InsightsModal } from '@/components/Event/InsightsModal';
 import { VoiceModal } from '@/components/VoiceModal';
 import { useEvents } from '@/hooks/useEvents';
 import { useSpeechSynthesis } from '@/hooks/useSpeechSynthesis';
 import { useSpeechRecognition } from '@/hooks/useSpeechRecognition';
-import { parseEventsFromText, parseEventsFromImage, queryEvents, type ParsedDraft, type ParseStatus, type QueryIntent } from '@/utils/llmParse';
+import { useHistory } from '@/hooks/useHistory';
+import { parseEventsFromText, parseEventsFromImage, queryEvents, fetchInsights, type ParsedDraft, type ParseStatus, type QueryIntent, type InsightResult } from '@/utils/llmParse';
 import { isQueryIntent } from '@/utils/intent';
 import type { Event } from '@/types';
 
@@ -25,13 +27,15 @@ function App() {
     isVoiceModalOpen,
     closeVoiceModal,
     openEventModal,
+    currentDate,
     theme,
     setTheme,
   } = useCalendarStore();
 
-  const { events, createEvent, updateEvent, deleteEvent } = useEvents();
+  const { events, createEvent, bulkCreateEvents, updateEvent, deleteEvent, clearAllEvents } = useEvents();
   const { speak } = useSpeechSynthesis();
   const speech = useSpeechRecognition();
+  const history = useHistory();
 
   const [parsing, setParsing] = useState(false);
   const [parseResult, setParseResult] = useState<{
@@ -46,6 +50,10 @@ function App() {
     intent: QueryIntent;
     matched: Event[];
   } | null>(null);
+  const [insightsLoading, setInsightsLoading] = useState(false);
+  const [insightsOpen, setInsightsOpen] = useState(false);
+  const [insightsResult, setInsightsResult] = useState<InsightResult | null>(null);
+  const [insightsScopeLabel, setInsightsScopeLabel] = useState('');
 
   useEffect(() => {
     const savedTheme = localStorage.getItem('theme') as 'light' | 'dark' | null;
@@ -94,6 +102,27 @@ function App() {
     }
   }, []);
 
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey)) return;
+      const target = e.target as HTMLElement | null;
+      if (target) {
+        const tag = target.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || target.isContentEditable) return;
+      }
+      const key = e.key.toLowerCase();
+      if (key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        history.undo();
+      } else if ((key === 'z' && e.shiftKey) || key === 'y') {
+        e.preventDefault();
+        history.redo();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [history]);
+
   const handleVoiceCommand = useCallback(async (text: string, mode: 'speech' | 'schedule' = 'speech') => {
     if (!text.trim()) return;
 
@@ -101,13 +130,18 @@ function App() {
     if (mode === 'speech' && isQueryIntent(text)) {
       setParsing(true);
       try {
-        const digest = events.map(e => ({
-          id: e.id,
-          title: e.title,
-          startTime: e.startTime,
-          endTime: e.endTime,
-          allDay: e.allDay,
-        }));
+        // 只发"现在 ± 60 天"的事件，避免课表展开后体积超限 + 省 token
+        const now = Date.now();
+        const windowMs = 60 * 24 * 60 * 60 * 1000;
+        const digest = events
+          .filter(e => Math.abs(e.startTime.getTime() - now) <= windowMs)
+          .map(e => ({
+            id: e.id,
+            title: e.title,
+            startTime: e.startTime,
+            endTime: e.endTime,
+            allDay: e.allDay,
+          }));
         const result = await queryEvents(text, digest);
         speech.resetTranscript();
         closeVoiceModal();
@@ -190,27 +224,68 @@ function App() {
   }, []);
 
   const handleConfirmDrafts = useCallback((drafts: ParsedDraft[]) => {
-    drafts.forEach(d => {
-      createEvent({
-        title: d.title,
-        description: d.description,
-        startTime: d.startTime,
-        endTime: d.endTime,
-        allDay: false,
-        color: d.color,
-        colorId: d.colorId,
-      });
-    });
-    if (drafts.length === 1) {
+    if (drafts.length === 0) return;
+    const list = drafts.map(d => ({
+      title: d.title,
+      description: d.description,
+      startTime: d.startTime,
+      endTime: d.endTime,
+      allDay: false,
+      color: d.color,
+      colorId: d.colorId,
+      priority: d.priority || 'P2',
+    }));
+    if (list.length === 1) {
+      createEvent(list[0]);
       speak(`已创建事件：${drafts[0].title}`);
-    } else if (drafts.length > 1) {
-      speak(`已创建 ${drafts.length} 个事件`);
+    } else {
+      bulkCreateEvents(list, `批量新建 ${list.length} 个事件`);
+      speak(`已创建 ${list.length} 个事件`);
     }
-  }, [createEvent, speak]);
+  }, [createEvent, bulkCreateEvents, speak]);
 
   const handleEventClick = useCallback((event: Event) => {
     openEventModal(event);
   }, [openEventModal]);
+
+  const handleInsights = useCallback(async () => {
+    const dayStart = new Date(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate());
+    const dayEnd = new Date(dayStart);
+    dayEnd.setDate(dayEnd.getDate() + 1);
+    const yesterdayStart = new Date(dayStart);
+    yesterdayStart.setDate(yesterdayStart.getDate() - 1);
+
+    // 当天 + 前一天事件（前一天用于 follow-up 判断）
+    const inScope = events.filter(ev => {
+      const t = ev.startTime.getTime();
+      return t >= yesterdayStart.getTime() && t < dayEnd.getTime();
+    });
+
+    setInsightsScopeLabel(
+      dayStart.toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' })
+    );
+    setInsightsOpen(true);
+    setInsightsResult(null);
+    setInsightsLoading(true);
+    try {
+      const result = await fetchInsights(
+        inScope.map(e => ({
+          id: e.id,
+          title: e.title,
+          startTime: e.startTime,
+          endTime: e.endTime,
+          allDay: e.allDay,
+          priority: e.priority || 'P2',
+        })),
+        dayStart,
+        dayEnd,
+      );
+      setInsightsResult(result);
+      if (result.status === 'ok' && result.summary) speak(result.summary);
+    } finally {
+      setInsightsLoading(false);
+    }
+  }, [events, currentDate, speak]);
 
   const handleSaveEvent = useCallback((data: Omit<Event, 'id' | 'createdAt' | 'updatedAt'>) => {
     createEvent(data);
@@ -227,7 +302,7 @@ function App() {
   return (
     <div className={`h-screen flex flex-col ${theme === 'dark' ? 'dark' : ''}`}>
       <div className="flex-1 flex flex-col min-h-0 text-neutral-900 dark:text-neutral-100">
-        <Header />
+        <Header onInsights={handleInsights} insightsLoading={insightsLoading} eventCount={events.length} onClearAll={clearAllEvents} />
         <Calendar onEventClick={handleEventClick} />
       </div>
 
@@ -290,6 +365,20 @@ function App() {
           matched={queryResult.matched}
           onClose={() => setQueryResult(null)}
           onEventClick={openEventModal}
+        />
+      )}
+
+      {insightsOpen && (
+        <InsightsModal
+          loading={insightsLoading}
+          result={insightsResult}
+          events={events}
+          scopeLabel={insightsScopeLabel}
+          onClose={() => setInsightsOpen(false)}
+          onEventClick={(ev) => {
+            setInsightsOpen(false);
+            openEventModal(ev);
+          }}
         />
       )}
     </div>
